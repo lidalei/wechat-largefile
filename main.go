@@ -4,6 +4,7 @@ import (
 	"flag"
 
 	"github.com/prometheus/common/log"
+	// "github.com/google/subcommands"
 )
 
 var (
@@ -15,10 +16,24 @@ var (
 func main() {
 	flag.Parse()
 
+	if *outputFileName == "" {
+		*outputFileName = *fileName
+	}
+
 	// split file
-	err := Split(*fileName, *size*1024*1024, *outputFileName)
+	parts, err := Split(*fileName, *size*1024*1024, *outputFileName)
 	if err != nil {
 		log.Errorf("fail to split file %s, error: %v", *fileName, err)
 	}
+
+	log.Infof("write to parts: %v", parts)
+
+	// merge files
+	o := *outputFileName + ".new"
+	err = Merge(parts, o)
+	if err != nil {
+		log.Errorf("fail to merge files %v, error: %v", parts, err)
+	}
+	log.Infof("merge parts %v into file %s", parts, o)
 }
 

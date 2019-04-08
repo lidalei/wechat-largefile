@@ -14,9 +14,9 @@ const (
 
 // Split splits a big file into many parts.
 // The maximal size of each part is size bytes.
-func Split(fileName string, size int, outputFileName string) (err error) {
+func Split(fileName string, size int, outputFileName string) (parts []string, err error) {
 	if fileName == "" {
-		return errors.New("file name is empty")
+		return nil, errors.New("file name is empty")
 	}
 
 	if size == 0 {
@@ -24,21 +24,21 @@ func Split(fileName string, size int, outputFileName string) (err error) {
 	}
 
 	if outputFileName == "" {
-		outputFileName = fileName
+		return nil, errors.New("empty output file name")
 	}
 
 	info, err := os.Stat(fileName)
 	if os.IsNotExist(err) {
-		return fmt.Errorf("%s does not exist", fileName)
+		return nil, fmt.Errorf("%s does not exist", fileName)
 	}
 
 	if info.IsDir() {
-		return fmt.Errorf("%s is a directory, not a file", fileName)
+		return nil, fmt.Errorf("%s is a directory, not a file", fileName)
 	}
 
 	f, err := os.Open(fileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// check err returned from closing a file.
@@ -47,27 +47,30 @@ func Split(fileName string, size int, outputFileName string) (err error) {
 	}()
 
 	buf := make([]byte, size)
+	parts = make([]string, 0, 2)
 	for i := 1; ; i++ {
 		l, err := f.Read(buf)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// write to a file
-		err = write(fmt.Sprintf("%s.part%d", outputFileName, i), buf[:l])
+		part := fmt.Sprintf("%s.part%d", outputFileName, i)
+		parts = append(parts, part)
+		err = write(part, buf[:l], false)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return
 }
 
 // Merge merges files into a big file by simply concatenating them one by one
@@ -80,23 +83,78 @@ func Merge(fileNames []string, outputFileName string) (err error) {
 		return errors.New("empty output file name")
 	}
 
-	// read file one and write one
+	// create a file to write to
+	err = write(outputFileName, []byte{}, false)
+	if err != nil {
+		return fmt.Errorf("fail to create file %s, error: %v", outputFileName, err)
+	}
+
+	// read file one by one and write to one
+	for _, fileName := range fileNames {
+		data, err := read(fileName)
+		if err != nil {
+			return err
+		}
+
+		err = write(outputFileName, data, true)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
-func write(fileName string, data []byte) (err error) {
-	fmt.Println("shit")
+func read(fileName string) (data []byte, err error) {
+	if fileName == "" {
+		return nil, errors.New("file name is empty")
+	}
+
+	_, err = os.Stat(fileName)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("%s does not exist", fileName)
+	}
+
+	f, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	// check err returned from closing a file.
+	defer func() {
+		err = f.Close()
+	}()
+
+	data = make([]byte, 0, defaultSize)
+
+	buf := make([]byte, defaultSize)
+	for {
+		l, err := f.Read(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, buf[:l]...)
+	}
+
+	return
+}
+
+// write writes data into fileName in an append mode.
+// If fileName does not exist, it will be created.
+func write(fileName string, data []byte, isAppend bool) (err error) {
 	if fileName == "" {
 		return errors.New("file name is empty")
 	}
 
-	_, err = os.Stat(fileName)
-	if os.IsExist(err) {
-		return fmt.Errorf("%s exists", fileName)
+	writeFlag := os.O_WRONLY | os.O_CREATE
+	if isAppend {
+		writeFlag = writeFlag | os.O_APPEND
 	}
 
-	f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0755)
+	f, err := os.OpenFile(fileName, writeFlag, 0644)
 	if err != nil {
 		return err
 	}
