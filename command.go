@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	// default size of a splitted part in bytes
-	defaultSize = 20 * 1024 * 1024
+	// default size of a splitted part in MegaBytes
+	defaultSize = 20
 )
 
 // splitCmd implements subcommands.Command interface
@@ -38,13 +38,14 @@ func (sc *splitCmd) Synopsis() string {
 // Usage returns a long string explaining the command and giving usage
 // information.
 func (sc *splitCmd) Usage() string {
-	return "split -file=FileName [-size=Size] [-out=FileName]"
+	return `split -file=FileName [-size=Size] [-out=FileName].
+`
 }
 
 // SetFlags adds the flags for this command to the specified set.
 func (sc *splitCmd) SetFlags(f *flag.FlagSet) {
 	f.StringVar(&sc.fileName, "file", "", "The big file to split")
-	flag.IntVar(&sc.size, "size", 20, "The maximal size per part in megabytes")
+	flag.IntVar(&sc.size, "size", defaultSize, "The maximal size per part in megabytes")
 	flag.StringVar(&sc.outputFileName, "out", "", "The prefix of output files, the same to file by default")
 }
 
@@ -54,9 +55,9 @@ func (sc *splitCmd) Execute(ctx context.Context, f *flag.FlagSet, args ...interf
 	var parts []string
 	defer func() {
 		if err != nil {
-			logrus.Errorf("fail to split file %s, error: %v", sc.fileName, err)
+			logrus.Errorf("failed to split file %s, error: %v", sc.fileName, err)
 		} else {
-			logrus.Infof("split into parts: %v", parts)
+			logrus.Infof("split file %s into parts: %v", sc.fileName, parts)
 		}
 	}()
 	// Validate arguments and set them with default values if necessary
@@ -66,9 +67,13 @@ func (sc *splitCmd) Execute(ctx context.Context, f *flag.FlagSet, args ...interf
 		return
 	}
 
-	if sc.size == 0 {
-		sc.size = defaultSize
+	if sc.size <= 0 {
+		err = errors.New("size must be positive")
+		status = subcommands.ExitUsageError
+		return
 	}
+	// convert MegaBytes to Bytes
+	sc.size *= 1024 * 1024
 
 	if sc.outputFileName == "" {
 		sc.outputFileName = sc.fileName
@@ -156,7 +161,8 @@ func (mc *mergeCmd) Synopsis() string {
 // Usage returns a long string explaining the command and giving usage
 // information.
 func (mc *mergeCmd) Usage() string {
-	return "merge -files=fileNames -out=fileName"
+	return `merge -files=fileNames -out=fileName.
+`
 }
 
 // SetFlags adds the flags for this command to the specified set.
@@ -171,9 +177,9 @@ func (mc *mergeCmd) Execute(ctx context.Context, f *flag.FlagSet, args ...interf
 	var fileNames []string
 	defer func() {
 		if err != nil {
-			logrus.Errorf("fail to merge files %v, error: %v", fileNames, err)
+			logrus.Errorf("failed to merge files %v, error: %v", fileNames, err)
 		} else {
-			logrus.Infof("merge parts %v into file %s", fileNames, mc.outputFileName)
+			logrus.Infof("merged parts %v into file %s", fileNames, mc.outputFileName)
 		}
 	}()
 
